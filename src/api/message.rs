@@ -22,6 +22,13 @@ impl Message {
         }
     }
 
+    pub fn error(text: String) -> Self {
+        Message {
+            text,
+            status: Status::Error,
+        }
+    }
+
     pub fn text(&self) -> String {
         self.text.clone()
     }
