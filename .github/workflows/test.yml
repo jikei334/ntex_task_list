@@ -13,7 +13,7 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v4
-      - run: cargo bininstall diesel_cli
+      - run: cargo binstall diesel_cli
       - run: echo DATABASE_URL=postgres://postgres:postgres@localhost/test_postgres >> .env
       - run: echo TEST_DATABASE_URL=postgres://postgres:postgres@localhost/postgres >> .env
       - run: diesel setup
