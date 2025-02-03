@@ -17,6 +17,6 @@ jobs:
       - run: cargo binstall diesel_cli
       - run: echo DATABASE_URL=postgres://postgres:postgres@localhost/test_postgres >> .env
       - run: echo TEST_DATABASE_URL=postgres://postgres:postgres@localhost/postgres >> .env
-      - run: diesel setup
-      - run: diesel migration run
+      - run: diesel --database-url postgres://postgres:postgres@localhost/postgres setup
+      - run: diesel --database-url postgres://postgres:postgres@localhost/postgres migration run
       - run: cargo test
