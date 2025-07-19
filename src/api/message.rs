@@ -1,39 +1,52 @@
 use serde::{Deserialize, Serialize};
 
+use super::models::Task;
 
-#[derive(Clone, Copy, Deserialize, Serialize)]
-pub enum Status {
-    Info,
-    Warn,
-    Error,
+
+#[derive(Deserialize, Serialize)]
+pub struct TaskInfoMessage {
+    message: String,
+    task: Task,
+}
+
+impl TaskInfoMessage {
+    pub fn message(&self) -> &String {
+        &(self.message)
+    }
+
+    pub fn task(&self) -> &Task {
+        &(self.task)
+    }
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct Message {
-    text: String,
-    status: Status,
+pub struct TaskErrorMessage {
+    message: String,
 }
 
-impl Message {
-    pub fn info(text: String) -> Self {
-        Message {
-            text,
-            status: Status::Info,
-        }
+impl TaskErrorMessage {
+    pub fn message(&self) -> &String {
+        &(self.message)
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum TaskMessage {
+    Info(TaskInfoMessage),
+    Error(TaskErrorMessage),
+}
+
+impl TaskMessage {
+    pub fn info(message: String, task: Task) -> Self {
+        TaskMessage::Info(TaskInfoMessage {
+            message,
+            task,
+        })
     }
 
-    pub fn error(text: String) -> Self {
-        Message {
-            text,
-            status: Status::Error,
-        }
-    }
-
-    pub fn text(&self) -> String {
-        self.text.clone()
-    }
-
-    pub fn status(&self) -> Status {
-        self.status
+    pub fn error(message: String) -> Self {
+        TaskMessage::Error(TaskErrorMessage {
+            message,
+        })
     }
 }

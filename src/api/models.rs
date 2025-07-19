@@ -1,5 +1,9 @@
 use chrono::{NaiveDateTime, NaiveDate, Utc};
-use diesel::prelude::{Associations, Insertable, Selectable, PgConnection, Queryable, RunQueryDsl};
+use diesel::expression::SelectableHelper;
+use diesel::prelude::{
+    AsChangeset, Associations, Identifiable, Insertable, Selectable, PgConnection, Queryable, QueryResult, RunQueryDsl
+};
+use diesel::query_dsl::methods::FindDsl;
 use serde::{Deserialize, Serialize};
 
 
@@ -37,10 +41,44 @@ impl NewTask {
         }
     }
 
-    pub fn insert(self, conn: &mut PgConnection) -> diesel::prelude::QueryResult<usize> {
+    pub fn insert(self, conn: &mut PgConnection) -> QueryResult<Task> {
         diesel::insert_into(crate::schema::task::dsl::task)
             .values(&self)
-            .execute(conn)
+            .returning(Task::as_returning())
+            .get_result(conn)
+    }
+}
+
+#[derive(AsChangeset, Deserialize, Insertable, Serialize)]
+#[diesel(table_name = crate::schema::task)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct ModifiedTask {
+    pub title: String,
+    pub description: String,
+    pub finished: bool,
+    pub deadline: NaiveDate,
+}
+
+impl ModifiedTask {
+    pub fn new(
+        title: String,
+        description: String,
+        finished: bool,
+        deadline: NaiveDate,
+    ) -> Self {
+        Self {
+            title,
+            description,
+            finished,
+            deadline,
+        }
+    }
+
+    pub fn modify(self, id: i32, conn: &mut PgConnection) -> QueryResult<Task> {
+        diesel::update(crate::schema::task::table.find(id))
+            .set(&self)
+            .returning(Task::as_returning())
+            .get_result(conn)
     }
 }
 

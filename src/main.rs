@@ -20,6 +20,10 @@ async fn js() -> io::Result<NamedFile> {
     Ok(NamedFile::open("static/index.js")?)
 }
 
+async fn css() -> io::Result<NamedFile> {
+    Ok(NamedFile::open("static/styles.css")?)
+}
+
 #[ntex::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
@@ -36,6 +40,7 @@ async fn main() -> std::io::Result<()> {
             .service(ntex_files::Files::new("static", ".").show_files_listing())
             .route("/", web::get().to(index))
             .route("/index.js", web::get().to(js))
+            .route("/styles.css", web::get().to(css))
             .service(web::scope("/api").configure(api::ntex_config))
     })
     .bind(("127.0.0.1", 8080))?
