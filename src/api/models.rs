@@ -4,9 +4,11 @@ use diesel::prelude::{
     AsChangeset, Associations, Identifiable, Insertable, Selectable, PgConnection, Queryable, QueryResult, RunQueryDsl
 };
 use diesel::query_dsl::methods::FindDsl;
+use diesel::result::Error as DieselError;
 use serde::{Deserialize, Serialize};
 
 
+#[derive(Clone)]
 #[derive(Deserialize, Selectable, Serialize, Queryable)]
 #[diesel(table_name = crate::schema::task)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -17,6 +19,12 @@ pub struct Task {
     pub finished: bool,
     pub deadline: NaiveDate,
     pub created: NaiveDateTime,
+}
+
+impl Task {
+    pub fn get(id: i32, conn: &mut PgConnection) -> Result<Task, DieselError> {
+        crate::schema::task::dsl::task.find(id).first::<Task>(conn)
+    }
 }
 
 #[derive(Deserialize, Insertable, Serialize)]
