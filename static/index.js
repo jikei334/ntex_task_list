@@ -28,6 +28,175 @@ function checkbox(value, name, classNames=[]) {
     return element;
 }
 
+function updateJSON(element, name, value) {
+    const selectRadio = element.querySelector(`input[name="${name}"]:checked`);
+    let jsonData = {};
+
+    if (selectRadio) {
+        const key = selectRadio.value;
+        jsonData[key] = value;
+    }
+
+    return JSON.stringify(jsonData);
+}
+
+function TextFilter(name, label) {
+    const element = document.createElement("div");
+
+    const inputTextId = name + "-search-filter-text";
+    const inputTextName = name + "-search-filter-text";
+    const inputTextLabel = document.createElement("label");
+    inputTextLabel.for = inputTextId;
+    inputTextLabel.textContent = label;
+    element.appendChild(inputTextLabel);
+
+    const form = document.createElement("input");
+    form.type = "hidden";
+    form.name = name;
+    form.value = JSON.stringify({});
+    element.appendChild(form);
+
+    const inputRadioName = name + "-search-filter-radio";
+
+    for (const filterType of ["CONTAIN", "EQUAL"]) {
+        const filterTypeId = name + "-search-filter-radio-" + filterType;
+        const filterTypeInput = document.createElement("input");
+        filterTypeInput.id = filterTypeId;
+        filterTypeInput.type = "radio";
+        filterTypeInput.name = inputRadioName;
+        filterTypeInput.value = filterType;
+        element.appendChild(filterTypeInput);
+        const filterTypeLabel = document.createElement("label");
+        filterTypeLabel.for = filterTypeId;
+        filterTypeLabel.textContent = filterType;
+        element.appendChild(filterTypeLabel);
+    }
+
+    const inputText = document.createElement("input");
+    inputText.id = inputTextId;
+    inputText.type = "text";
+    inputText.name = inputTextName;
+    element.appendChild(inputText);
+
+    var lastSelected = null;
+    element.addEventListener('click', function(event) {
+        if (event.target.checked) {
+            if (event.target == lastSelected) {
+                event.target.checked = false;
+                lastSelected = null;
+            } else {
+                lastSelected = event.target;
+            }
+        }
+        form.value = updateJSON(element, inputRadioName, inputText.value);
+    });
+
+    inputText.addEventListener('change', function(event) {
+        form.value = updateJSON(element, inputRadioName, inputText.value);
+    })
+
+    return element;
+}
+
+function DateFilter(name, label) {
+    const element = document.createElement("div");
+
+    const inputDateId = name + "-search-filter-date";
+    const inputDateName = name + "-search-filter-date";
+    const inputDateLabel = document.createElement("label");
+    inputDateLabel.for = inputDateId;
+    inputDateLabel.textContent = label;
+    element.appendChild(inputDateLabel);
+
+    const form = document.createElement("input");
+    form.type = "hidden";
+    form.name = name;
+    form.value = JSON.stringify({});
+    element.appendChild(form);
+
+    const inputRadioName = name + "-search-filter-radio";
+
+    for (const filterType of ["LT", "LE", "EQ", "GE", "GT"]) {
+        const filterTypeId = name + "-search-filter-radio-" + filterType;
+        const filterTypeInput = document.createElement("input");
+        filterTypeInput.id = filterTypeId;
+        filterTypeInput.type = "radio";
+        filterTypeInput.name = inputRadioName;
+        filterTypeInput.value = filterType;
+        element.appendChild(filterTypeInput);
+        const filterTypeLabel = document.createElement("label");
+        filterTypeLabel.for = filterTypeId;
+        filterTypeLabel.textContent = filterType;
+        element.appendChild(filterTypeLabel);
+    }
+
+    const inputDate = document.createElement("input");
+    inputDate.id = inputDateId;
+    inputDate.type = "date";
+    inputDate.name = inputDateName;
+    element.appendChild(inputDate);
+
+    var lastSelected = null;
+    element.addEventListener('click', function(event) {
+        if (event.target.checked) {
+            if (event.target == lastSelected) {
+                event.target.checked = false;
+                lastSelected = null;
+            } else {
+                lastSelected = event.target;
+            }
+        }
+        form.value = updateJSON(element, inputRadioName, inputDate.value);
+    });
+
+    inputDate.addEventListener('change', function(event) {
+        form.value = updateJSON(element, inputRadioName, inputDate.value);
+    })
+
+    return element;
+}
+
+function BooleanFilter(name, label) {
+    const element = document.createElement("div");
+
+    const inputBooleanId = name + "-search-filter-boolean";
+    const inputBooleanIdName = name + "-search-filter-boolean";
+    const inputBooleanLabel = document.createElement("label");
+    inputBooleanLabel.for = inputBooleanId;
+    inputBooleanLabel.textContent = label;
+    element.appendChild(inputBooleanLabel);
+
+    const inputRadioName = name + "-search-filter-radio";
+
+    for (const filterType of ["TRUE", "FALSE"]) {
+        const filterTypeId = name + "-search-filter-radio-" + filterType;
+        const filterTypeInput = document.createElement("input");
+        filterTypeInput.id = filterTypeId;
+        filterTypeInput.type = "radio";
+        filterTypeInput.name = name;
+        filterTypeInput.value = filterType;
+        element.appendChild(filterTypeInput);
+        const filterTypeLabel = document.createElement("label");
+        filterTypeLabel.for = filterTypeId;
+        filterTypeLabel.textContent = filterType;
+        element.appendChild(filterTypeLabel);
+    }
+
+    var lastSelected = null;
+    element.addEventListener('click', function(event) {
+        if (event.target.checked) {
+            if (event.target == lastSelected) {
+                event.target.checked = false;
+                lastSelected = null;
+            } else {
+                lastSelected = event.target;
+            }
+        }
+    });
+
+    return element;
+}
+
 function GetParsedModifiedTaskFormData(form) {
     const formData = new FormData(form);
     const parsedData = {};
@@ -46,6 +215,49 @@ function GetParsedModifiedTaskFormData(form) {
         }
     }
 
+    return parsedData;
+}
+
+function GetParsedTaskQueryFormData(form) {
+    const formData = new FormData(form);
+    const parsedData = {};
+    const filter = {};
+    var order = {
+        "Deadline": "ASC"
+    };
+
+    for (const [key, value] of formData.entries()) {
+        const input = form.querySelector(`[name="${key}"]`);
+        if (!input) continue;
+
+        switch (key) {
+            case "page_no":
+                parsedData[key] = parseInt(value, 10);
+                break;
+            case "per_page":
+                parsedData[key] = parseInt(value, 10);
+                break;
+            case "title":
+            case "description":
+            case "deadline":
+                const jsonValue = JSON.parse(value);
+                if (Object.keys(jsonValue).length !== 0) {
+                    filter[key] = jsonValue;
+                }
+                break;
+            case "finished":
+                filter[key] = value;
+                break;
+            case "order":
+                order = JSON.parse(value);
+                break;
+            default:
+                break;
+        }
+    }
+
+    parsedData["filter"] = filter;
+    parsedData["order"] = order;
     return parsedData;
 }
 
@@ -236,27 +448,125 @@ function generateTaskEditForm(taskItem, task) {
     content.style.maxHeight = content.scrollHeight + "px";
 }
 
-async function fetchTaskList() {
+function createPagenatedTaskList(pagenatedTaskList) {
+    const taskListElement = document.getElementById("task-list");
+    taskListElement.innerHTML = "";
+
+    pagenatedTaskList.task_list.forEach(item => {
+        taskListElement.appendChild(generateTaskArticle(item));
+    });
+}
+
+async function searchTask(jsonData) {
     try {
-        const response = await fetch(apiUrl + "/task")
+        const response = await fetch(apiUrl + "/task/search", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(jsonData)
+        });
+
         if (!response.ok) {
-            showNotification("Failed to get tasks");
-            throw new Error("データの取得に失敗しました");
+            showNotification("Error occured(status " + response.status + ")", "error");
+            throw new Error(`Error: ${response.status}`);
         }
 
-        console.log(response);
-
-        const data = await response.json();
-        const taskListElement = document.getElementById("task-list");
-
-        console.log(data.tasks);
-
-        data.tasks.forEach(item => {
-            taskListElement.appendChild(generateTaskArticle(item));
-        });
+        const result = await response.json();
+        createPagenatedTaskList(result.Info.pagenated_task_list);
     } catch (error) {
         showNotification("Error occured: " + error, "error");
     }
+}
+
+async function createTaskQueryForm() {
+    const taskQueryForm = document.getElementById("task-query-form");
+
+    const titleFilter = TextFilter("title", "title");
+    taskQueryForm.appendChild(titleFilter);
+
+    const descriptionFilter = TextFilter("description", "description");
+    taskQueryForm.appendChild(descriptionFilter);
+
+    const deadlineFilter = DateFilter("deadline", "deadline");
+    taskQueryForm.appendChild(deadlineFilter);
+
+    const finishedFilter = BooleanFilter("finished", "finished");
+    taskQueryForm.appendChild(finishedFilter);
+
+    const pageNo = document.createElement("input");
+    pageNo.type = "text";
+    pageNo.inputmode = "decimal";
+    pageNo.min = 1;
+    pageNo.name = "page_no";
+    pageNo.value = 1;
+    taskQueryForm.appendChild(pageNo);
+
+    const perPage = document.createElement("input");
+    perPage.type = "text";
+    perPage.inputmode = "decimal";
+    perPage.min = 1;
+    perPage.name = "per_page";
+    perPage.value = 10;
+    taskQueryForm.appendChild(perPage);
+
+    const sortOrder = document.createElement("div");
+    const sortOrderName = "order";
+    var isSortOrderSelected = false;
+    for (const [key, val] of [
+        ["Deadline", "ASC"],
+        ["Deadline", "DESC"],
+        ["Created", "ASC"],
+        ["Created", "DESC"]
+    ]) {
+        const sortOrderId = key + "-" + val + "-sort-order-radio";
+        const sortOrderRadioInput = document.createElement("input");
+        sortOrderRadioInput.id = sortOrderId;
+        sortOrderRadioInput.type = "radio";
+        sortOrderRadioInput.name = sortOrderName;
+        if (!isSortOrderSelected) {
+            sortOrderRadioInput.checked = true;
+            isSortOrderSelected = true;
+        }
+        const value = {}
+        value[key] = val
+        sortOrderRadioInput.value = JSON.stringify(value);
+        sortOrder.appendChild(sortOrderRadioInput);
+        const sortOrderRadioLabel = document.createElement("label");
+        sortOrderRadioLabel.for = sortOrderId;
+        sortOrderRadioLabel.textContent = key + "(" + val + ")";
+        sortOrder.appendChild(sortOrderRadioLabel);
+    }
+    taskQueryForm.appendChild(sortOrder);
+
+    const searchButton = document.createElement("button");
+    searchButton.className = "searchName";
+    searchButton.textContent = "Search";
+    searchButton.type = "submit";
+    taskQueryForm.addEventListener("submit", async function (event) {
+        event.preventDefault();
+
+        const jsonData = GetParsedTaskQueryFormData(event.target);
+
+        searchTask(jsonData);
+    })
+    taskQueryForm.appendChild(searchButton);
+}
+
+createTaskQueryForm();
+
+async function fetchTaskList() {
+    const query = {
+        "filter": {
+            "finished": "FALSE",
+        },
+        "order": {
+            "Deadline": "ASC",
+        },
+        "page_no": 1,
+        "per_page": 10,
+    };
+    searchTask(query);
 }
 
 fetchTaskList();

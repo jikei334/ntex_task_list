@@ -1,7 +1,56 @@
 use serde::{Deserialize, Serialize};
 
-use super::models::Task;
+use crate::api::models::Task;
+use crate::api::query::{PagenatedTaskList, TaskQuery};
 
+
+#[derive(Deserialize, Serialize)]
+pub struct PagenatedTaskListInfoMessage {
+    message: String,
+    pagenated_task_list: PagenatedTaskList,
+}
+
+impl PagenatedTaskListInfoMessage {
+    pub fn message(&self) -> &String {
+        &(self.message)
+    }
+
+    pub fn pagenated_task_list(&self) -> &PagenatedTaskList {
+        &(self.pagenated_task_list)
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct PagenatedTaskListErrorMessage {
+    message: String,
+}
+
+impl PagenatedTaskListErrorMessage {
+    pub fn message(&self) -> &String {
+        &(self.message)
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum PagenatedTaskListMessage {
+    Info(PagenatedTaskListInfoMessage),
+    Error(PagenatedTaskListErrorMessage),
+}
+
+impl PagenatedTaskListMessage {
+    pub fn info(message: String, pagenated_task_list: PagenatedTaskList) -> Self {
+        PagenatedTaskListMessage::Info(PagenatedTaskListInfoMessage {
+            message,
+            pagenated_task_list,
+        })
+    }
+
+    pub fn error(message: String) -> Self {
+        PagenatedTaskListMessage::Error(PagenatedTaskListErrorMessage {
+            message,
+        })
+    }
+}
 
 #[derive(Deserialize, Serialize)]
 pub struct TaskInfoMessage {

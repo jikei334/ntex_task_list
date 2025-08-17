@@ -1,23 +1,30 @@
 mod models;
 mod message;
+mod query;
 
 use std::sync::Arc;
 
 use diesel::query_dsl::methods::FindDsl;
 use diesel::r2d2;
 use diesel::prelude::{Connection, PgConnection, RunQueryDsl};
+use diesel::QueryDsl;
 use diesel::result::Error as DieselError;
 use ntex::web;
+use serde::{Deserialize, Serialize};
 
 use models::{NewTask, ModifiedTask, Task, TaskList};
-use message::TaskMessage;
-use super::schema::task::dsl;
+use message::{PagenatedTaskListMessage, TaskMessage};
+use query::{TaskFilter, TaskOrder, TaskQuery};
+
+use crate::schema::task;
+use crate::schema::task::dsl;
 
 
 type DbPool = r2d2::Pool<r2d2::ConnectionManager<PgConnection>>;
 
+
 async fn get_tasks(
-    pool: web::types::State<Arc<DbPool>>
+    pool: web::types::State<Arc<DbPool>>,
 ) -> Result<web::HttpResponse, web::Error> {
 
     let pool = pool.get_ref().clone();
@@ -37,6 +44,32 @@ async fn get_tasks(
         Err(err) => {
             eprintln!("Database query error: {:?}", err);
             Ok(web::HttpResponse::InternalServerError().body("Error retrieving tasks"))
+        },
+    }
+}
+
+async fn search_task (
+    pool: web::types::State<Arc<DbPool>>,
+    task_query: web::types::Json<TaskQuery>,
+) -> Result<web::HttpResponse, web::Error> {
+    let pool = pool.get_ref().clone();
+    let task_query = task_query.0;
+
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
+
+    let result = task_query.get_pagenated_tasks(&mut conn);
+
+    match result {
+        Ok(paginated_task_list) => {
+            let message = PagenatedTaskListMessage::info(
+                "search success".to_string(),
+                paginated_task_list
+            );
+            Ok(web::HttpResponse::Ok().json(&message))
+        },
+        Err(error) => {
+            let message = PagenatedTaskListMessage::error(format!("{}", error).to_string());
+            Ok(web::HttpResponse::InternalServerError().json(&message))
         },
     }
 }
@@ -135,6 +168,10 @@ pub fn ntex_config(cfg: &mut web::ServiceConfig) {
             .route(web::get().to(get_tasks))
             .route(web::post().to(register_task))
     ).service(
+        web::resource("/task/search")
+            .wrap(web::middleware::DefaultHeaders::new().header("Access-Control-Allow-Origin", "*"))
+            .route(web::post().to(search_task))
+    ).service(
         web::resource("/task/{task_id}")
             .wrap(web::middleware::DefaultHeaders::new().header("Access-Control-Allow-Origin", "*"))
             .route(web::get().to(get_task))
@@ -146,7 +183,7 @@ pub fn ntex_config(cfg: &mut web::ServiceConfig) {
 mod tests {
     use std::sync::Arc;
 
-    use chrono::NaiveDate;
+    use chrono::{Local, NaiveDate};
     use diesel::prelude::PgConnection;
     use diesel::r2d2;
     use diesel::r2d2::ConnectionManager;
@@ -157,9 +194,9 @@ mod tests {
     use ntex::http::{Request, Response, StatusCode};
     use serde::{Deserialize, Serialize};
 
-    use super::{DbPool, get_tasks, modify_task, register_task, ntex_config};
-    use super::message;
-    use super::message::TaskMessage;
+    use crate::api::{DbPool, get_tasks, modify_task, register_task, ntex_config};
+    use crate::api::query::{FilterBoolean, FilterContainable, FilterOrderd, SortOrder, TaskOrder, TaskQuery};
+    use super::message::{PagenatedTaskListMessage, TaskMessage};
     use super::models::{NewTask, ModifiedTask, Task};
 
 
@@ -342,6 +379,304 @@ mod tests {
             },
             TaskMessage::Error(_) => {
                 panic!();
+            },
+        }
+    }
+
+    #[ntex::test]
+    async fn test_search_filter() {
+        let state = get_state();
+        let app = web::test::init_service(web::App::new().state(state).service(web::scope("/api").configure(ntex_config))).await;
+
+        let current_time = format!("{:?}", Local::now());
+        let task1 = NewTask::new(
+            format!("SearchTask1[{}]", current_time).to_string(),
+            "description1 Lose".to_string(),
+            NaiveDate::from_ymd_opt(2023, 11, 5).unwrap()
+        );
+        let registered_task1 = create_task(task1, &app).await;
+        let task2 = NewTask::new(
+            format!("SearchTask2[{}]", current_time).to_string(),
+            "description2 Lose".to_string(),
+            NaiveDate::from_ymd_opt(2014, 10, 25).unwrap()
+        );
+        let registered_task2 = create_task(task2, &app).await;
+        let task3 = NewTask::new(
+            format!("SearchTask3[{}]", current_time).to_string(),
+            "description3 Win".to_string(),
+            NaiveDate::from_ymd_opt(2005, 10, 26).unwrap()
+        );
+        let registered_task3 = create_task(task3, &app).await;
+
+        // containe title
+        let mut task_query = TaskQuery::new(1, 100);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(current_time.clone()));
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                let task_set = pagenated_task_list_info_list_message.pagenated_task_list().task_list().iter()
+                    .map(|task| task.id).collect::<std::collections::HashSet<i32>>();
+                eprintln!("{}, {}, {} in {:?}({})", registered_task1.id, registered_task2.id, registered_task3.id,
+                    task_set, pagenated_task_list_info_list_message.pagenated_task_list().num_total_tasks());
+                assert!(task_set.contains(&registered_task1.id), "[containe title]registered_task1 is not exist.");
+                assert!(task_set.contains(&registered_task2.id), "[containe title]registered_task2 is not exist.");
+                assert!(task_set.contains(&registered_task3.id), "[containe title]registered_task3 is not exist.");
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[containe title]Error message: {}", error.message());
+            },
+        }
+
+        // equal description
+        let mut task_query = TaskQuery::new(1, 100);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(current_time.clone()))
+            .set_description(FilterContainable::EQUAL("description2 Lose".to_string()));
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                let task_set = pagenated_task_list_info_list_message.pagenated_task_list().task_list().iter()
+                    .map(|task| task.id).collect::<std::collections::HashSet<i32>>();
+                eprintln!("{}, {}, {} in {:?}({})", registered_task1.id, registered_task2.id, registered_task3.id,
+                    task_set, pagenated_task_list_info_list_message.pagenated_task_list().num_total_tasks());
+                assert!(!task_set.contains(&registered_task1.id), "[equal description]registered_task1 is exist.");
+                assert!(task_set.contains(&registered_task2.id), "[equal description]registered_task2 is not exist.");
+                assert!(!task_set.contains(&registered_task3.id), "[equal description]registered_task3 is exist.");
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[equal description]Error message: {}", error.message());
+            },
+        }
+
+        // finished true
+        let mut task_query = TaskQuery::new(1, 100);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(current_time.clone()))
+            .set_finished(FilterBoolean::TRUE);
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                let task_set = pagenated_task_list_info_list_message.pagenated_task_list().task_list().iter()
+                    .map(|task| task.id).collect::<std::collections::HashSet<i32>>();
+                eprintln!("{}, {}, {} in {:?}({})", registered_task1.id, registered_task2.id, registered_task3.id,
+                    task_set, pagenated_task_list_info_list_message.pagenated_task_list().num_total_tasks());
+                assert!(!task_set.contains(&registered_task1.id), "[finished true]registered_task1 is exist.");
+                assert!(!task_set.contains(&registered_task2.id), "[finished true]registered_task2 is exist.");
+                assert!(!task_set.contains(&registered_task3.id), "[finished true]registered_task3 is exist.");
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[finished true]Error message: {}", error.message());
+            },
+        }
+
+        // finished false
+        let mut task_query = TaskQuery::new(1, 100);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(current_time.clone()))
+            .set_finished(FilterBoolean::FALSE);
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                let task_set = pagenated_task_list_info_list_message.pagenated_task_list().task_list().iter()
+                    .map(|task| task.id).collect::<std::collections::HashSet<i32>>();
+                eprintln!("{}, {}, {} in {:?}({})", registered_task1.id, registered_task2.id, registered_task3.id,
+                    task_set, pagenated_task_list_info_list_message.pagenated_task_list().num_total_tasks());
+                assert!(task_set.contains(&registered_task1.id), "[finished false]registered_task1 is not exist.");
+                assert!(task_set.contains(&registered_task2.id), "[finished false]registered_task2 is not exist.");
+                assert!(task_set.contains(&registered_task3.id), "[finished false]registered_task3 is not exist.");
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[finished false]Error message: {}", error.message());
+            },
+        }
+
+        // created less
+        let mut task_query = TaskQuery::new(1, 100);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(current_time.clone()))
+            .set_created(FilterOrderd::LT(registered_task2.created));
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                let task_set = pagenated_task_list_info_list_message.pagenated_task_list().task_list().iter()
+                    .map(|task| task.id).collect::<std::collections::HashSet<i32>>();
+                eprintln!("{}, {}, {} in {:?}({})", registered_task1.id, registered_task2.id, registered_task3.id,
+                    task_set, pagenated_task_list_info_list_message.pagenated_task_list().num_total_tasks());
+                assert!(task_set.contains(&registered_task1.id), "[created less]registered_task1 is not exist.");
+                assert!(!task_set.contains(&registered_task2.id), "[created less]registered_task2 is exist.");
+                assert!(!task_set.contains(&registered_task3.id), "[created less]registered_task3 is exist.");
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[created less]Error message: {}", error.message());
+            },
+        }
+
+        // deadline greater or equal
+        let mut task_query = TaskQuery::new(1, 100);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(current_time.clone()))
+            .set_deadline(FilterOrderd::GE(registered_task2.deadline));
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                let task_set = pagenated_task_list_info_list_message.pagenated_task_list().task_list().iter()
+                    .map(|task| task.id).collect::<std::collections::HashSet<i32>>();
+                eprintln!("{}, {}, {} in {:?}({})", registered_task1.id, registered_task2.id, registered_task3.id,
+                    task_set, pagenated_task_list_info_list_message.pagenated_task_list().num_total_tasks());
+                assert!(task_set.contains(&registered_task1.id), "[deadline greater or equal]registered_task1 is not exist.");
+                assert!(task_set.contains(&registered_task2.id), "[deadline greater or equal]registered_task2 is not exist.");
+                assert!(!task_set.contains(&registered_task3.id), "[deadline greater or equal]registered_task3 is exist.");
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[deadline greater or equal]Error message: {}", error.message());
+            },
+        }
+    }
+
+    #[ntex::test]
+    async fn test_search_order() {
+        let state = get_state();
+        let app = web::test::init_service(web::App::new().state(state).service(web::scope("/api").configure(ntex_config))).await;
+
+        let current_time = format!("{:?}", Local::now());
+        let task1 = NewTask::new(
+            format!("SearchTask1[{}]", current_time).to_string(),
+            "description1 Lose".to_string(),
+            NaiveDate::from_ymd_opt(2023, 11, 5).unwrap()
+        );
+        let registered_task1 = create_task(task1, &app).await;
+        let task2 = NewTask::new(
+            format!("SearchTask2[{}]", current_time).to_string(),
+            "description2 Lose".to_string(),
+            NaiveDate::from_ymd_opt(2014, 10, 25).unwrap()
+        );
+        let registered_task2 = create_task(task2, &app).await;
+        let task3 = NewTask::new(
+            format!("SearchTask3[{}]", current_time).to_string(),
+            "description3 Win".to_string(),
+            NaiveDate::from_ymd_opt(2005, 10, 26).unwrap()
+        );
+        let registered_task3 = create_task(task3, &app).await;
+
+        // created asc
+        let mut task_query = TaskQuery::new(1, 100);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(current_time.clone()));
+        task_query.order = TaskOrder::Created(SortOrder::ASC);
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                let task_list = pagenated_task_list_info_list_message.pagenated_task_list().task_list();
+                for i in 1..task_list.len() {
+                    let prev_task = task_list[i-1].clone();
+                    let current_task = task_list[i].clone();
+                    assert!(prev_task.created <= current_task.created, "[created asc]{}: {:?} > {:?}",
+                        i, prev_task.created, current_task.created);
+                }
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[created asc]Error message: {}", error.message());
+            },
+        }
+
+        // deadline desc
+        let mut task_query = TaskQuery::new(1, 100);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(current_time.clone()));
+        task_query.order = TaskOrder::Deadline(SortOrder::DESC);
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                let task_list = pagenated_task_list_info_list_message.pagenated_task_list().task_list();
+                for i in 1..task_list.len() {
+                    let prev_task = task_list[i-1].clone();
+                    let current_task = task_list[i].clone();
+                    assert!(prev_task.deadline >= current_task.deadline, "[deadline desc]{}: {:?} < {:?}",
+                        i, prev_task.deadline, current_task.deadline);
+                }
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[deadline desc]Error message: {}", error.message());
+            },
+        }
+    }
+
+    #[ntex::test]
+    async fn test_pagenated_task() {
+        let state = get_state();
+        let app = web::test::init_service(web::App::new().state(state).service(web::scope("/api").configure(ntex_config))).await;
+
+        let key = format!("{:?}_pagenated_task", Local::now());
+        let task1 = NewTask::new(
+            format!("SearchTask1[{}]", key).to_string(),
+            "description1 Lose".to_string(),
+            NaiveDate::from_ymd_opt(2023, 11, 5).unwrap()
+        );
+        let registered_task1 = create_task(task1, &app).await;
+        let task2 = NewTask::new(
+            format!("SearchTask2[{}]", key).to_string(),
+            "description2 Lose".to_string(),
+            NaiveDate::from_ymd_opt(2014, 10, 25).unwrap()
+        );
+        let registered_task2 = create_task(task2, &app).await;
+        let task3 = NewTask::new(
+            format!("SearchTask3[{}]", key).to_string(),
+            "description3 Win".to_string(),
+            NaiveDate::from_ymd_opt(2005, 10, 26).unwrap()
+        );
+        let registered_task3 = create_task(task3, &app).await;
+
+        let mut task_query = TaskQuery::new(2, 2);
+        task_query.filter = task_query.filter
+            .set_title(FilterContainable::CONTAIN(key.clone()));
+        let request = web::test::TestRequest::post()
+            .uri("/api/task/search")
+            .set_json(&task_query)
+            .to_request();
+        let message: PagenatedTaskListMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            PagenatedTaskListMessage::Info(pagenated_task_list_info_list_message) => {
+                assert!(pagenated_task_list_info_list_message.pagenated_task_list().num_total_tasks() == 3,
+                    "num task is not 3: {}", pagenated_task_list_info_list_message.pagenated_task_list().num_total_tasks());
+                let task_list = pagenated_task_list_info_list_message.pagenated_task_list().task_list();
+                assert!(task_list.len() == 1, "task list must contains 1 item, but contains {} items.", task_list.len());
+                assert!(task_list[0].id == registered_task1.id);
+            },
+            PagenatedTaskListMessage::Error(error) => {
+                panic!("[pagenated task]Error message: {}", error.message());
             },
         }
     }
