@@ -5,6 +5,22 @@ use crate::api::query::{PagenatedTaskList, TaskQuery};
 
 
 #[derive(Deserialize, Serialize)]
+pub enum SimpleMessage {
+    Info(String),
+    Error(String),
+}
+
+impl SimpleMessage {
+    pub fn info(message: String) -> Self {
+        SimpleMessage::Info(message)
+    }
+
+    pub fn error(message: String) -> Self {
+        SimpleMessage::Error(message)
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct PagenatedTaskListInfoMessage {
     message: String,
     pagenated_task_list: PagenatedTaskList,

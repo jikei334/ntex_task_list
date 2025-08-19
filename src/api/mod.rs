@@ -13,7 +13,7 @@ use ntex::web;
 use serde::{Deserialize, Serialize};
 
 use models::{NewTask, ModifiedTask, Task, TaskList};
-use message::{PagenatedTaskListMessage, TaskMessage};
+use message::{PagenatedTaskListMessage, SimpleMessage, TaskMessage};
 use query::{TaskFilter, TaskOrder, TaskQuery};
 
 use crate::schema::task;
@@ -161,6 +161,25 @@ async fn modify_task(
     }
 }
 
+async fn delete_task(
+    pool: web::types::State<Arc<DbPool>>,
+    path: web::types::Path<i32>
+) -> Result<web::HttpResponse, web::Error> {
+    let pool = pool.get_ref().clone();
+    let task_id = path.into_inner();
+
+    let mut conn = pool.get().expect("couldn't get db connection from pool");
+
+    let result = Task::delete(task_id, &mut conn);
+
+    match result {
+        Ok(task_id) => Ok(
+            web::HttpResponse::Ok().json(&SimpleMessage::info(format!("task {} was deleted.", task_id).to_string()))),
+        Err(_) => Ok(
+            web::HttpResponse::InternalServerError().json(&SimpleMessage::error("Error occurred".to_string()))),
+    }
+}
+
 pub fn ntex_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::resource("/task")
@@ -176,6 +195,7 @@ pub fn ntex_config(cfg: &mut web::ServiceConfig) {
             .wrap(web::middleware::DefaultHeaders::new().header("Access-Control-Allow-Origin", "*"))
             .route(web::get().to(get_task))
             .route(web::put().to(modify_task))
+            .route(web::delete().to(delete_task))
     );
 }
 
@@ -196,7 +216,7 @@ mod tests {
 
     use crate::api::{DbPool, get_tasks, modify_task, register_task, ntex_config};
     use crate::api::query::{FilterBoolean, FilterContainable, FilterOrderd, SortOrder, TaskOrder, TaskQuery};
-    use super::message::{PagenatedTaskListMessage, TaskMessage};
+    use super::message::{PagenatedTaskListMessage, SimpleMessage, TaskMessage};
     use super::models::{NewTask, ModifiedTask, Task};
 
 
@@ -678,6 +698,53 @@ mod tests {
             PagenatedTaskListMessage::Error(error) => {
                 panic!("[pagenated task]Error message: {}", error.message());
             },
+        }
+    }
+
+    #[ntex::test]
+    async fn test_delete_task_ok() {
+        let state = get_state();
+        let app = web::test::init_service(web::App::new().state(state).service(web::scope("/api").configure(ntex_config))).await;
+        let new_task = NewTask::new(
+            "NewTask".to_string(),
+            "description".to_string(),
+            NaiveDate::from_ymd_opt(2005, 10, 26).unwrap()
+        );
+        let task = create_task(new_task, &app).await;
+        let request = web::test::TestRequest::get()
+            .uri(&format!("/api/task/{}", task.id))
+            .to_request();
+        let message: TaskMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            TaskMessage::Info(task_info_message) => {
+                let got_task = task_info_message.task();
+                assert_eq!(got_task.title, task.title);
+                assert_eq!(got_task.description, task.description);
+                assert_eq!(got_task.deadline, task.deadline);
+            },
+            TaskMessage::Error(error) => {
+                panic!("{}", error.message());
+            },
+        }
+
+        let request = web::test::TestRequest::delete()
+            .uri(&format!("/api/task/{}", task.id))
+            .to_request();
+        let message: SimpleMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            SimpleMessage::Info(_) => (),
+            SimpleMessage::Error(error) => panic!("{:?}", error),
+        }
+
+        let request = web::test::TestRequest::get()
+            .uri(&format!("/api/task/{}", task.id))
+            .to_request();
+        let message: TaskMessage = web::test::read_response_json(&app, request).await;
+        match message {
+            TaskMessage::Info(_) => {
+                panic!("task is not deleted");
+            },
+            TaskMessage::Error(_) => (),
         }
     }
 }

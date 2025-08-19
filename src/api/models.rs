@@ -1,9 +1,10 @@
 use chrono::{NaiveDateTime, NaiveDate, Utc};
+use diesel::ExpressionMethods;
 use diesel::expression::SelectableHelper;
 use diesel::prelude::{
     AsChangeset, Associations, Identifiable, Insertable, Selectable, PgConnection, Queryable, QueryResult, RunQueryDsl
 };
-use diesel::query_dsl::methods::FindDsl;
+use diesel::query_dsl::methods::{FilterDsl, FindDsl};
 use diesel::result::Error as DieselError;
 use serde::{Deserialize, Serialize};
 
@@ -24,6 +25,12 @@ pub struct Task {
 impl Task {
     pub fn get(id: i32, conn: &mut PgConnection) -> Result<Task, DieselError> {
         crate::schema::task::dsl::task.find(id).first::<Task>(conn)
+    }
+
+    pub fn delete(id: i32, conn: &mut PgConnection) -> Result<usize, DieselError> {
+        diesel::delete(crate::schema::task::dsl::task.filter(
+                crate::schema::task::id.eq(id)
+        )).execute(conn)
     }
 }
 

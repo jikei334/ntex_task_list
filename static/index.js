@@ -339,6 +339,60 @@ function generateTaskArticle(task) {
     });
     content.appendChild(editButton);
 
+    const deleteModalWindow = document.createElement("dialog");
+    const deleteModalWindowContent = document.createElement("div");
+    deleteModalWindowContent.textContent = "Are you sure to delete?"
+    deleteModalWindow.appendChild(deleteModalWindowContent);
+    const deleteModalWindowDeleteButton = document.createElement("button");
+    deleteModalWindowDeleteButton.textContent = "Delete";
+    deleteModalWindowDeleteButton.className = "delete";
+    deleteModalWindowDeleteButton.addEventListener("click", async function(event) {
+        try {
+            const response = await fetch(apiUrl + "/task/" + task.id, {
+                method: "DELETE",
+            });
+
+            if (!response.ok) {
+                showNotification("Error occured(status " + response.status + ")", "error");
+                throw new Error(`Error: ${response.status}`);
+            }
+
+            const result = await response.json();
+            if (result.Info) {
+                showNotification(result.Info, "info");
+                taskItem.remove();
+                deleteModalWindow.close();
+            } else if (result.Error) {
+                showNotification(result.Error, "error");
+                deleteModalWindow.close();
+            } else {
+                showNotification("Error occured", "error");
+                deleteModalWindow.close();
+            }
+        } catch (error) {
+            showNotification("Error occured: " + error, "error");
+            deleteModalWindow.close();
+        }
+    })
+    deleteModalWindow.appendChild(deleteModalWindowDeleteButton);
+    const deleteModalWindowCancelButton = document.createElement("button");
+    deleteModalWindowCancelButton.textContent = "Cancel";
+    deleteModalWindowCancelButton.className = "cancel";
+    deleteModalWindowCancelButton.autofocus = true;
+    deleteModalWindowCancelButton.addEventListener("click", function(event) {
+        deleteModalWindow.close();
+    });
+    deleteModalWindow.appendChild(deleteModalWindowCancelButton);
+    content.appendChild(deleteModalWindow);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", function(event) {
+        event.preventDefault();
+        deleteModalWindow.showModal();
+    });
+    content.appendChild(deleteButton);
+
     taskItem.appendChild(content);
 
     return taskItem;
