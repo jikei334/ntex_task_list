@@ -1,10 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use crate::api::models::Task;
-use crate::api::query::{PagenatedTaskList, TaskQuery};
+use crate::models::{CommentView, TaskView};
+use crate::query::{PagenatedTaskList, TaskQuery};
 
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub enum SimpleMessage {
     Info(String),
     Error(String),
@@ -20,7 +20,7 @@ impl SimpleMessage {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub struct PagenatedTaskListInfoMessage {
     message: String,
     pagenated_task_list: PagenatedTaskList,
@@ -36,7 +36,7 @@ impl PagenatedTaskListInfoMessage {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub struct PagenatedTaskListErrorMessage {
     message: String,
 }
@@ -47,7 +47,7 @@ impl PagenatedTaskListErrorMessage {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub enum PagenatedTaskListMessage {
     Info(PagenatedTaskListInfoMessage),
     Error(PagenatedTaskListErrorMessage),
@@ -68,10 +68,10 @@ impl PagenatedTaskListMessage {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub struct TaskInfoMessage {
     message: String,
-    task: Task,
+    task: TaskView,
 }
 
 impl TaskInfoMessage {
@@ -79,12 +79,12 @@ impl TaskInfoMessage {
         &(self.message)
     }
 
-    pub fn task(&self) -> &Task {
+    pub fn task(&self) -> &TaskView {
         &(self.task)
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub struct TaskErrorMessage {
     message: String,
 }
@@ -95,14 +95,14 @@ impl TaskErrorMessage {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub enum TaskMessage {
     Info(TaskInfoMessage),
     Error(TaskErrorMessage),
 }
 
 impl TaskMessage {
-    pub fn info(message: String, task: Task) -> Self {
+    pub fn info(message: String, task: TaskView) -> Self {
         TaskMessage::Info(TaskInfoMessage {
             message,
             task,
@@ -111,6 +111,54 @@ impl TaskMessage {
 
     pub fn error(message: String) -> Self {
         TaskMessage::Error(TaskErrorMessage {
+            message,
+        })
+    }
+}
+
+#[derive(Serialize)]
+pub struct CommentInfoMessage {
+    message: String,
+    comment: CommentView,
+}
+
+impl CommentInfoMessage {
+    pub fn message(&self) -> &String {
+        &(self.message)
+    }
+
+    pub fn comment(&self) -> &CommentView {
+        &(self.comment)
+    }
+}
+
+#[derive(Serialize)]
+pub struct CommentErrorMessage {
+    message: String,
+}
+
+impl CommentErrorMessage {
+    pub fn message(&self) -> &String {
+        &(self.message)
+    }
+}
+
+#[derive(Serialize)]
+pub enum CommentMessage {
+    Info(CommentInfoMessage),
+    Error(CommentErrorMessage),
+}
+
+impl CommentMessage {
+    pub fn info(message: String, comment: CommentView) -> Self {
+        CommentMessage::Info(CommentInfoMessage {
+            message,
+            comment,
+        })
+    }
+
+    pub fn error(message: String) -> Self {
+        CommentMessage::Error(CommentErrorMessage {
             message,
         })
     }

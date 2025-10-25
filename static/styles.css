@@ -22,6 +22,16 @@ header {
 .content.open {
 }
 
+.comments {
+    background-color: hsl(0 0% 95%);
+    margin: 3px;
+    padding: 3px;
+}
+
+.comment {
+    background-color: hsl(0 0% 85%);
+}
+
 #notification-area {
     position: fixed;
     bottom: 20px;

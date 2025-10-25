@@ -218,6 +218,27 @@ function GetParsedModifiedTaskFormData(form) {
     return parsedData;
 }
 
+function GetParsedNewCommentFormData(form) {
+    const formData = new FormData(form);
+    const parsedData = {};
+
+    for (const [key, value] of formData.entries()) {
+        const input = form.querySelector(`[name="${key}"]`);
+        if (!input) continue;
+
+        switch (key) {
+            case "task_id":
+                parsedData[key] = parseInt(value, 10);
+                break;
+            default:
+                parsedData[key] = value;
+                break;
+        }
+    }
+
+    return parsedData;
+}
+
 function GetParsedTaskQueryFormData(form) {
     const formData = new FormData(form);
     const parsedData = {};
@@ -293,6 +314,88 @@ function showNotification(message, messageType) {
     }, 3000);
 }
 
+function generateCommentArticle(comment) {
+    const commentItem = document.createElement("article");
+    commentItem.className = "comment";
+
+    const description = document.createElement("div");
+    description.textContent = comment.content;
+    commentItem.appendChild(description);
+
+    return commentItem;
+}
+
+function generateCommentList(task) {
+    const commentList = document.createElement("div");
+
+    const comments = document.createElement("div");
+    comments.className = "comments";
+    task.comments.forEach(comment => {
+        comments.appendChild(generateCommentArticle(comment));
+    });
+    commentList.appendChild(comments);
+
+    const form = document.createElement("form");
+
+    const id = document.createElement("input");
+    id.type = "hidden";
+    id.value = task.id;
+    id.name = "task_id";
+    form.appendChild(id);
+
+    const content = document.createElement("input");
+    content.type = "text";
+    content.name = "content";
+    form.appendChild(content);
+
+    const addButton = document.createElement("button");
+    addButton.textContent = "Add";
+    addButton.type = "submit";
+
+    form.addEventListener("submit", async function(event) {
+        event.preventDefault();
+
+        const jsonData = GetParsedNewCommentFormData(event.target);
+
+        console.log("Add New Comment: ", jsonData);
+
+        try {
+            const response = await fetch(apiUrl + "/comment", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(jsonData)
+            });
+
+
+            if (!response.ok) {
+                showNotification("Error occured(status " + response.status + ")", "error");
+                throw new Error(`Error: ${response.status}`);
+            }
+
+            const result = await response.json();
+            if (result.Info) {
+                showNotification(result.Info.message, "info");
+                console.log(result.Info);
+                comments.appendChild(generateCommentArticle(result.Info.comment));
+            } else if (result.Error) {
+                showNotification(result.Error.message, "error");
+            } else {
+                showNotification("Error occured", "error");
+            }
+        } catch (error) {
+            showNotification("Error occured: " + error, "error");
+        }
+    })
+
+    form.appendChild(addButton);
+
+    commentList.appendChild(form);
+
+    return commentList;
+}
+
 function generateTaskArticle(task) {
     const taskItem = document.createElement("article");
     taskItem.className = "task";
@@ -317,6 +420,8 @@ function generateTaskArticle(task) {
     description.className = "description";
     description.textContent = task.description;
     content.appendChild(description);
+
+    content.appendChild(generateCommentList(task));
 
     header.addEventListener("click", function(event) {
         if (event.target.classList.contains("finished") || event.target.classList.contains("editButton")) {
@@ -503,10 +608,11 @@ function generateTaskEditForm(taskItem, task) {
 }
 
 function createPagenatedTaskList(pagenatedTaskList) {
+    console.log(pagenatedTaskList);
     const taskListElement = document.getElementById("task-list");
     taskListElement.innerHTML = "";
 
-    pagenatedTaskList.task_list.forEach(item => {
+    pagenatedTaskList.task_view_list.tasks.forEach(item => {
         taskListElement.appendChild(generateTaskArticle(item));
     });
 }

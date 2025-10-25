@@ -1,6 +1,3 @@
-mod api;
-mod schema;
-
 use std::io;
 use std::sync::Arc;
 
@@ -10,6 +7,8 @@ use diesel::r2d2::ConnectionManager;
 use ntex::web;
 use ntex_files;
 use ntex_files::NamedFile;
+
+use ntex_task_list::ntex_config;
 
 
 async fn index() -> io::Result<NamedFile> {
@@ -41,7 +40,7 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(index))
             .route("/index.js", web::get().to(js))
             .route("/styles.css", web::get().to(css))
-            .service(web::scope("/api").configure(api::ntex_config))
+            .service(web::scope("/api").configure(ntex_config))
     })
     .bind(("127.0.0.1", 8080))?
     .run()

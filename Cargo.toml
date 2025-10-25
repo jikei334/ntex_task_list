@@ -3,6 +3,14 @@ name = "ntex_task_list"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "ntex_task_list"
+path = "src/lib/mod.rs"
+
+[[bin]]
+name = "ntex_task_list"
+path = "src/main.rs"
+
 [dependencies]
 chrono = { version = "0.4", features = ["serde", "std"] }
 diesel = { version = "2.2.0", features = ["chrono", "postgres", "r2d2"] }

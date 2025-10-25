@@ -10,8 +10,8 @@ use diesel::RunQueryDsl;
 use diesel::{ExpressionMethods, TextExpressionMethods};
 use serde::{Deserialize, Serialize};
 
-use crate::schema::task;
-use crate::api::models::Task;
+use crate::schema::{comment, task};
+use crate::models::{Task, TaskView, TaskViewList};
 
 
 #[derive(Deserialize, Serialize)]
@@ -134,6 +134,55 @@ impl<'a> TaskFilter {
 }
 
 #[derive(Deserialize, Serialize)]
+pub struct CommentFilter {
+    content: Option<FilterContainable<String>>,
+    created: Option<FilterOrderd<NaiveDateTime>>,
+}
+
+impl<'a> CommentFilter {
+    pub fn new() -> Self {
+        Self {
+            content: None,
+            created: None,
+        }
+    }
+
+    pub fn set_content(mut self, content: FilterContainable<String>) -> Self {
+        self.content = Some(content);
+        self
+    }
+
+    pub fn set_created(mut self, created: FilterOrderd<NaiveDateTime>) -> Self {
+        self.created = Some(created);
+        self
+    }
+
+    pub fn filter(&self, query: comment::BoxedQuery<'a, diesel::pg::Pg>) -> comment::BoxedQuery<'a, diesel::pg::Pg>
+    {
+        let query = match &self.content {
+            Some(filter_containable) => match filter_containable {
+                FilterContainable::CONTAIN(v) => QueryDsl::filter(query, comment::content.like(format!("%{}%", v).clone())),
+                FilterContainable::EQUAL(v) => QueryDsl::filter(query, comment::content.eq(v.clone())),
+            },
+            None => query,
+        };
+
+        let query = match &self.created {
+            Some(filter_ordered) => match filter_ordered {
+                FilterOrderd::LT(v) => QueryDsl::filter(query, comment::created.lt(v.clone())),
+                FilterOrderd::LE(v) => QueryDsl::filter(query, comment::created.le(v.clone())),
+                FilterOrderd::EQ(v) => QueryDsl::filter(query, comment::created.eq(v.clone())),
+                FilterOrderd::GE(v) => QueryDsl::filter(query, comment::created.ge(v.clone())),
+                FilterOrderd::GT(v) => QueryDsl::filter(query, comment::created.gt(v.clone())),
+            },
+            None => query,
+        };
+
+        query
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub enum SortOrder {
     ASC,
     DESC,
@@ -160,16 +209,16 @@ impl TaskOrder {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub struct PagenatedTaskList {
-    task_list: Vec<Task>,
+    task_view_list: TaskViewList,
     num_total_tasks: i64,
     page_no: i64,
 }
 
 impl PagenatedTaskList {
-    pub fn task_list(&self) -> &Vec<Task> {
-        &(self.task_list)
+    pub fn task_view_list(&self) -> &TaskViewList {
+        &(self.task_view_list)
     }
 
     pub fn num_total_tasks(&self) -> i64 {
@@ -217,12 +266,32 @@ impl TaskQuery {
         let query = self.filtered(self.get_query());
         let num_total = query.count().get_result(conn)?;
         let query = self.ordered(self.filtered(self.get_query()));
-        let task_list = query.limit(self.per_page).offset(self.per_page * (self.page_no - 1)).load::<Task>(conn)?;
+        let tasks = query
+            .limit(self.per_page)
+            .offset(self.per_page * (self.page_no - 1))
+            .load::<Task>(conn)?;
+        let task_view_list = TaskViewList::new(tasks, conn)?;
 
         Ok(PagenatedTaskList {
-            task_list,
+            task_view_list,
             num_total_tasks: num_total,
             page_no: self.page_no,
         })
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub enum CommentOrder {
+    Created(SortOrder),
+}
+
+impl CommentOrder {
+    pub fn order<'a>(&self, query: comment::BoxedQuery<'a, diesel::pg::Pg>) -> comment::BoxedQuery<'a, diesel::pg::Pg> {
+        match &self {
+            CommentOrder::Created(sort_order) => match sort_order {
+                SortOrder::ASC => query.order(comment::created.asc()),
+                SortOrder::DESC => query.order(comment::created.desc()),
+            },
+        }
     }
 }
